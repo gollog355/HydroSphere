@@ -32,6 +32,21 @@ class CommonConfigSection(object):
         self.credentials = GoogleCredentials.get_application_default()
         self.compute = discovery.build('compute', 'v1', credentials=self.credentials)
 
+class DefaultOption(dict):
+    def __init__(self, config, section, **kv):
+        self._config = config
+        self._section = section
+        dict.__init__(self, **kv)
+
+    def items(self):
+        _items = []
+        for option in self:
+            if not self._config.has_option(self._section, option):
+                _items.append((option, self[option]))
+            else:
+                value_in_config = self._config.get(self._section, option)
+                _items.append((option, value_in_config))
+        return _items
 
 class Config(object):
     def __init__(self, deployment_id):
@@ -48,7 +63,7 @@ class Config(object):
                 tag = config.get(section, "tag")
                 machinetype = config.get(section, "machinetype")
                 disk1image = config.get(section, "disk1image")
-                disk2image = config.get(section, "disk2image")
+                disk2image = config.get(section, "disk2image", vars=DefaultOption(config, section, disk2image=None))
                 disk1type = config.get(section, "disk1type")
                 disk2type = config.get(section, "disk2type")
                 disk1size = config.get(section, "disk1size")
