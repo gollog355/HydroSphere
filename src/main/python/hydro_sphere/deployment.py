@@ -4,6 +4,7 @@ from instance import Instance
 import os
 import ntpath
 from tempfile import mkstemp
+from git import Repo
 
 
 class Deployment(object):
@@ -22,7 +23,22 @@ class Deployment(object):
         common_section = self.config.config_sections[0]
         config_sections = self.config.config_sections[1:]
         dst_work_dir = "/home/" + common_section.instance_user_name
-        # self.debug()
+        master = Instance("tahir-ep-master-mas-0", None, None, "plumgrid")
+        slave0 = Instance("tahir-ep-slave1-slave-set1-0", None, None, "plumgrid")
+        slave1 = Instance("tahir-ep-slave1-slave-set1-1", None, None, "plumgrid")
+        slave2 = Instance("tahir-ep-slave1-slave-set1-2", None, None, "plumgrid")
+        master.ip = "10.10.0.29"
+        slave0.ip = "10.10.0.149"
+        slave1.ip = "10.10.2.5"
+        slave2.ip = "10.10.2.7"
+        self.instances.append(master)
+        self.instances.append(slave0)
+        self.instances.append(slave1)
+        self.instances.append(slave2)
+        self.master_instances.append(master)
+        self.slave_instances.append(slave0)
+        self.slave_instances.append(slave1)
+        self.slave_instances.append(slave2)
 
         if step == 1:
             # Create Instances
@@ -210,6 +226,10 @@ class Deployment(object):
         elif step == 17:
             print("==> Copying master public key to authorized key of all slaves")
             master_instance = self.master_instances[0]
+            try:
+                master_instance.run_cmd('cat /dev/zero | ssh-keygen -b 2048 -t rsa -f ~/.ssh/id_rsa -q -N ""')
+            except:
+                print("Nothing to be worried")
             pub_key = master_instance.run_cmd("cat ~/.ssh/id_rsa.pub", use_sudo=True)
             self.append_to_file_on_multiple_instances(self.slave_instances,
                                                       "~/.ssh/authorized_keys",
@@ -223,7 +243,30 @@ class Deployment(object):
                                                       text, use_sudo=True)
             self.run_cmd_on_multiple_instances(self.slave_instances, "sudo sysctl -p", use_sudo=True)
 
+        # ###########################################################################################################
+        #                                          Install event_processing
+        # ###########################################################################################################
         elif step == 19:
+            # TODO: if exists already.
+            Repo.clone_from("git@github.com:carbon-ml/event-processing.git", "event-processing")
+            self.upload_to_multiple_instances(self.master_instances, "./event-processing", "~/")
+
+            print("==> Installing event processing on master")
+            script_path_name = os.getcwd() + "/vm_files/event_processing_install.sh"
+            script_name = ntpath.basename(script_path_name)
+
+            print("==> Uploading %s to %s" % (script_path_name, dst_work_dir))
+            self.upload_to_multiple_instances(self.master_instances, script_path_name, dst_work_dir)
+
+            print("==> Running %s/%s script" % (dst_work_dir, script_name))
+            self.run_cmd_on_multiple_instances(self.master_instances, "/bin/bash " + dst_work_dir + "/" + script_name)
+
+        elif step == 20:
+            # TODO: if exists already?
+            self.run_cmd_on_multiple_instances(self.master_instances,
+                                               "git clone https://github.com/gollog355/gollog.git")
+
+        elif step == 22:
             print ("==> Check that deployment is fine")
             hydra_instance = self.master_instances[0]
             hydra_instance.run_cmd("source ~/venv/bin/activate && cd " + dst_work_dir +
